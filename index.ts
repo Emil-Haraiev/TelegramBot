@@ -24,7 +24,8 @@ bot.setMyCommands([
     {command: '/start', description: 'Запуск бота'},
     {command: '/help', description: 'Нужна помощь?'},
     {command: '/tag_admins', description: 'Тегни админов'},
-    {command: '/tag_all', description: 'Тегни всех участников'}
+    {command: '/tag_all', description: 'Тегни всех участников'},
+    {command: '/pin', description: 'Закрепи сообщение с уведомлением'}
 ])
 
 
@@ -89,19 +90,28 @@ const isAdmin = async (msg: any) =>{
 
 
 
-bot.onText(/(\/pin|^(пин)$)/i, (msg: any) => {
+bot.onText(/(\/pin|^(пин)|^(закреп))$/i, async (msg: any) => {
     const chatId = msg.chat.id;
     const messageId = msg.message_id;
+    const userId = msg.from.id;
 
-    bot.pinChatMessage(chatId, messageId)
-        .then(() => {
-            bot.sendMessage(chatId, 'Сообщение успешно закреплено с уведомлением.');
-        })
-        .catch((error: any) => {
-            bot.sendMessage(chatId, 'Не удалось закрепить сообщение. Пожалуйста, попробуйте позже.');
-        });
+    try {
+        const chatMember = await bot.getChatMember(chatId, userId);
+        if (chatMember.status === 'administrator' || chatMember.status === 'creator') {
+            bot.pinChatMessage(chatId, messageId)
+                .then(() => {
+                    bot.sendMessage(chatId, 'Сообщение успешно закреплено с уведомлением.');
+                })
+                .catch((error: any) => {
+                    bot.sendMessage(chatId, 'Не удалось закрепить сообщение. Пожалуйста, попробуйте позже.');
+                });
+        } else {
+            bot.sendMessage(chatId, 'У вас нет прав на закрепление сообщений в этом чате.');
+        }
+    } catch (error) {
+        bot.sendMessage(chatId, 'Произошла ошибка. Пожалуйста, попробуйте позже.');
+    }
 });
-
 
 
 
