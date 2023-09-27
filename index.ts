@@ -3,22 +3,6 @@ require('dotenv').config();
 const token = process.env.BOT_TOKEN;
 const bot = new TelegramApi(token, { polling: true });
 
-
-bot.onText(/\/start/, async (msg: any) => {
-    const chatId = msg.chat.id;
-    try {
-        await isAdmin(msg) ? bot.sendMessage(chatId, 'Привет! Я бот. Чтобы узнать доступные команды, используйте /help.'):
-            bot.sendMessage(chatId, 'Привет! Для использования этого бота, пожалуйста, сделайте меня администратором в этой группе. Если вы уже предоставили администратора используйте /check для проверки');
-    } catch(error){
-        bot.sendMessage(chatId, 'Произошла ошибка. Пожалуйста, попробуйте позже.');
-    }
-});
-
-bot.onText(/\/help/, (msg: any) => {
-    const chatId = msg.chat.id;
-    bot.sendMessage(chatId, 'Доступные команды:\n/tag_all - Тегнуть всех участников\n/tag_admins - Тегнуть админов');
-});
-
 bot.setMyCommands([
     {command: '/start', description: 'Запуск бота'},
     {command: '/help', description: 'Нужна помощь?'},
@@ -27,6 +11,35 @@ bot.setMyCommands([
     {command: '/pin', description: 'Закрепи сообщение с уведомлением'}
 ])
 
+enum ChatMemberStatus {
+    ADMIN = 'administrator',
+    CREATOR = 'creator',
+    MEMBER = 'member'
+}
+
+const isAdmin = async (msg: any) =>{
+    const chatId = msg.chat.id;
+    const botInfo = await bot.getChatMember(chatId,6612055476)
+    return  botInfo.status === ChatMemberStatus.ADMIN;
+}
+
+bot.onText(/\/start/, async (msg: any) => {
+    const chatId = msg.chat.id;
+    try {
+        await isAdmin(msg) ? bot.sendMessage(chatId, 'Привет! Я бот. Чтобы узнать доступные команды, используйте /help.'):
+            bot.sendMessage(chatId,
+                'Привет! Для использования этого бота, пожалуйста, сделайте меня администратором в этой группе.' +
+                ' Если вы уже предоставили администратора используйте /check для проверки');
+    } catch(error){
+        bot.sendMessage(chatId, 'Произошла ошибка. Пожалуйста, попробуйте позже.');
+    }
+});
+
+bot.onText(/\/help/, (msg: any) => {
+    const chatId = msg.chat.id;
+    bot.sendMessage(chatId, 'Доступные команды:\n/tag_all- Тегнуть всех участников (сбор)\n/tag_admins - Тегнуть админов (сбор админов)' +
+        '\n/pin - Закрепить сообщение (пин, закреп)');
+});
 
 bot.onText(/\/check/,  async (msg: any) => {
     const chatId = msg.chat.id;
@@ -40,64 +53,49 @@ bot.onText(/\/check/,  async (msg: any) => {
 
 });
 
-
 bot.onText(/(\/tag_admins|^(Сбор админов)$)/i, async (msg: any) => {
     const chatId = msg.chat.id;
     const user = msg.from.first_name;
     try {
         const members = await bot.getChatAdministrators(chatId);
-        const adminMentions = members
+        let adminMentions = members
             .filter((admin: any) => !admin.user.is_bot)
             .map((admin: any) => {
-                // return `@${admin.user.username}`;
-                const userLink = `tg://user?id=${admin.user.id}`;
-                return `[${admin.user.first_name}](${userLink}),`;
+                if(admin.user.username) {
+                    return `@${admin.user.username},`;
+                }
+                    // }else{
+                //     const userLink = `tg://user?id=${admin.user.id}`;
+                //     return `[${admin.user.first_name}](${userLink}),`;
+                // }
+
+
             })
             .join(' ');
-        bot.sendMessage(chatId, `‼ Пользователь ${user} вызывает администраторов: ${adminMentions} ‼`, { parse_mode: 'Markdown' });
+
+        adminMentions = adminMentions.slice(0, -1);
+        // const parseMode = adminMentions.includes('@') ? undefined : 'Markdown';
+
+        bot.sendMessage(chatId, `‼ Пользователь ${user} вызывает администраторов: ${adminMentions} ‼`, {parseMode: 'Markdown'});
     } catch (error) {
         bot.sendMessage(chatId, 'Не удалось получить список администраторов.');
     }
 });
 
-
-// bot.onText(/(\/tag_all | |^(Сбор админов)$)/i, async (msg:any) => {
-//     const chatId = msg.chat.id;
-//
-//     try {
-//         const chatMembers = await bot.getChatMembersCount(chatId);
-//         const realUserMentions: string[] = [];
-//         for (let i = 0; i < chatMembers; i += 200) {
-//             const offset = i;
-//             const chatMembersChunk = await bot.getChatMember(chatId, { offset });
-//             console.log(chatMembersChunk)
-//             // const realUsers = chatMembersChunk.filter((member:any) => !member.user.is_bot);
-//             // realUserMentions.push(...realUsers.map((user:any) => `@${user.user.username || user.user.first_name}`));
-//         }
-//         bot.sendMessage(chatId, `Тегнуть всех реальных пользователей: ${realUserMentions.join(' ')}`);
-//     } catch (error) {
-//         bot.sendMessage(chatId, 'Не удалось получить список участников чата.');
-//     }
-// });
-
-
-const isAdmin = async (msg: any) =>{
-    const chatId = msg.chat.id;
-    const botInfo = await bot.getChatMember(chatId,6612055476)
-    return  botInfo.status === 'administrator';
-}
-
-
-
 bot.onText(/(\/pin|^(пин)|^(закреп))$/i, async (msg: any) => {
     const chatId = msg.chat.id;
-    const messageId = msg.message_id;
     const userId = msg.from.id;
+    const replyToMessage = msg.reply_to_message;
+
+    if (!replyToMessage) {
+        bot.sendMessage(chatId, 'Пожалуйста, ответьте на сообщение, которое вы хотите закрепить.');
+        return;
+    }
 
     try {
         const chatMember = await bot.getChatMember(chatId, userId);
-        if (chatMember.status === 'administrator' || chatMember.status === 'creator') {
-            bot.pinChatMessage(chatId, messageId)
+        if (chatMember.status === ChatMemberStatus.ADMIN || chatMember.status === ChatMemberStatus.CREATOR) {
+            bot.pinChatMessage(chatId, replyToMessage.message_id)
                 .then(() => {
                     bot.sendMessage(chatId, 'Сообщение успешно закреплено с уведомлением.');
                 })
@@ -114,9 +112,27 @@ bot.onText(/(\/pin|^(пин)|^(закреп))$/i, async (msg: any) => {
 
 
 
+bot.onText(/(\/tag_all|^(Тегнуть всех)$)/i, async (msg: any) => {
+    const chatId = msg.chat.id;
+    const user = msg.from.first_name;
+    try {
+        const chatMembersCount = await bot.getChatMemberCount(chatId);
+        console.log(chatMembersCount)
+        const userMentions: any = [];
+        for (let i = 0; i < chatMembersCount; i++) {
+            const chatMember =  bot.getChatMember(chatId, i);
+            console.log(chatMember)
+            if (!chatMember.user.is_bot) {
+                const mention = `@${chatMember.user.username}`;
+                userMentions.push(mention);
+            }
+            console.log(userMentions)
+        }
 
-
-
-
-
+        // Присоединяем участников через запятую и отправляем сообщение
+        bot.sendMessage(chatId, `‼ Пользователь ${user} тегнул всех участников: ${userMentions.join(', ')} ‼`, { parseMode: 'Markdown' });
+    } catch (error) {
+        bot.sendMessage(chatId, 'Не удалось получить список участников чата.');
+    }
+});
 
